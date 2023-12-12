@@ -1,0 +1,175 @@
+openapi: '3.0.2'
+info:
+  title: LaterLetters Api
+  version: '1.0'
+servers:
+  - url: http://localhost:3000/
+
+tags:
+  - name: Auth
+    description: Logging in and stuff
+  - name: Letters
+
+
+components:
+  headers:
+    LoginCookie:
+      schema:
+        type: string
+        format: uuid
+      description: Session Cookie
+
+  responses:
+    SessionCookie:
+      description: A succesful login response
+      headers:
+        Set-Cookie: 
+          $ref: "#/components/headers/LoginCookie"
+        
+  requestBodies:
+    UserCredentials:
+      description: Credentials for loging in and creating Account
+      content:
+          application/json:
+            schema:
+             type: object
+             properties:
+              email:
+                type: string
+                format: email
+                example: johndoe@gmail.com
+              password:
+                type: string
+                example: password123
+
+  securitySchemes:
+    sessionKeyCookie:
+      type: apiKey
+      in: cookie
+      name: session_key
+
+
+paths:
+  /letter/create:
+    post:
+      security:
+        - sessionKeyCookie: []
+      tags:
+        - Letters
+      summary: User creates letter for themslves
+      requestBody:
+        description: The parts of a letter
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                letterBody:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Letter Added
+        "418":
+          description: Issue Adding Letter
+
+
+
+  /user/login:
+    post:
+      tags:
+        - Auth
+      operationId: loginUser
+      summary: Allows user to login
+      requestBody:
+        $ref: "#/components/requestBodies/UserCredentials"
+        
+      responses:
+        "200": 
+          $ref: "#/components/responses/SessionCookie"
+        "401":
+          description: Login Fail
+
+  /user/create:
+    post:
+      tags:
+        - Auth
+      summary: Creates a new User Account
+      requestBody:
+        $ref: "#/components/requestBodies/UserCredentials"
+      responses:
+        "200": 
+          $ref: "#/components/responses/SessionCookie"
+        "418":
+          description: User Not Created
+
+  /user/logout:
+    put:
+      summary: Deletes session ID
+      tags:
+        - Auth
+      parameters:
+        - in: cookie
+          required: true
+          name: Session
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Succesfully Logged out
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                enum:
+                  - ""
+                default: ""
+                description: deletes the cookie by setting it to blank
+        "418":
+          description: Unconfirmed Logout
+
+  /user/forgot-password/{userEmail}:
+    post:
+      tags:
+        - Auth
+      summary: Sends a reset password link to email
+      parameters:
+        - in: path
+          required: true
+          name: userEmail
+          schema:
+            type: string
+            format: email
+      responses:
+        "200": 
+          description: Reset link will be sent if email exists.
+        "500":
+          description: Server error
+
+  /user/reset-password/{resetJWT}:
+    put:
+      tags:
+        - Auth
+      summary: If JWT.valid(), reset password
+      parameters:
+        - in: path
+          required: true
+          name: resetJWT
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200": 
+          description: Password Succesfully Reset
+        "401":
+          description: Invalid JWT, u sneaky boi
+        "418": 
+          description: server err
+
+      
+
+
+
