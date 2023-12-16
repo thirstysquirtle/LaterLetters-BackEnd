@@ -131,18 +131,20 @@ paths:
         "418":
           description: Unconfirmed Logout
 
-  /user/forgot-password/{userEmail}:
+  /user/forgot-password:
     post:
       tags:
         - Auth
       summary: Sends a reset password link to email
-      parameters:
-        - in: path
-          required: true
-          name: userEmail
-          schema:
-            type: string
-            format: email
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
       responses:
         "200": 
           description: Reset link will be sent if email exists.
