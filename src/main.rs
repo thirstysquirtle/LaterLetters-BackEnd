@@ -330,6 +330,7 @@ mod auth_paths {
             .find_one(doc! {"_id": &user_creds.email}, None)
             .await?;
         if let None = user_acc {
+            //"If you have an account with us, you will receive an email"
             return Ok(StatusCode::OK);
         }
 
