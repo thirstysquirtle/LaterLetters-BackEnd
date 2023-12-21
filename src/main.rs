@@ -48,6 +48,38 @@ where
     }
 }
 
+pub struct SharedState {
+    mongo_client: Client,
+    ses_client: aws_sdk_sesv2::Client,
+}
+
+mod auth_paths;
+
+
+#[tokio::main]
+async fn main() {
+    let mongo_client = start_mongo().await.expect("MongoDB connection Failed");
+    let region_provider = RegionProviderChain::first_try(None)
+        .or_default_provider()
+        .or_else(Region::new("us-east-2"));
+
+    let aws_config = aws_config::from_env().region(region_provider).load().await;
+    let ses_client = aws_sdk_sesv2::Client::new(&aws_config);
+
+    let shared = SharedState {
+        mongo_client,
+        ses_client,
+    };
+    let shared_state = Arc::new(shared);
+
+    let app = Router::new().nest("/user", auth_paths::build(shared_state));
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    println!("listening on {}", addr);
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+
 async fn start_mongo() -> mongodb::error::Result<Client> {
     let uri = "mongodb://localhost:9999/?directConnection=true&tls=false&maxPoolSize=10";
     let mut client_options = ClientOptions::parse(uri).await?;
@@ -93,36 +125,3 @@ async fn start_mongo() -> mongodb::error::Result<Client> {
         .await?;
     Ok(client)
 }
-
-pub struct SharedState {
-    mongo_client: Client,
-    ses_client: aws_sdk_sesv2::Client,
-}
-
-mod auth_paths;
-
-
-#[tokio::main]
-async fn main() {
-    let mongo_client = start_mongo().await.expect("MongoDB connection Failed");
-    let region_provider = RegionProviderChain::first_try(None)
-        .or_default_provider()
-        .or_else(Region::new("us-east-2"));
-
-    let aws_config = aws_config::from_env().region(region_provider).load().await;
-    let ses_client = aws_sdk_sesv2::Client::new(&aws_config);
-
-    let shared = SharedState {
-        mongo_client,
-        ses_client,
-    };
-    let shared_state = Arc::new(shared);
-
-    let app = Router::new().nest("/user", auth_paths::build(shared_state));
-
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!("listening on {}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
-}
-

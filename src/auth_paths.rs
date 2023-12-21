@@ -13,7 +13,6 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use std::{error::Error, ops::Add, sync::Arc};
-use uuid::{fmt::Hyphenated, Uuid};
 
 use crate::{
     AppError, SessionDocument, SharedState, COL_PASSWORD_RESET, COL_USER_CREDS, COL_USER_SESS,
@@ -22,6 +21,10 @@ use crate::{
 use chrono::{Days, Utc};
 use mongodb::bson::doc;
 use serde::{Deserialize, Serialize};
+use tokio::{
+    join,
+    time::{sleep, Duration},
+};
 
 #[derive(Deserialize)]
 struct UserLoginCredentials {
@@ -40,63 +43,62 @@ async fn login_user(
     State(state): State<Arc<SharedState>>,
     Json(user_creds): Json<UserLoginCredentials>,
 ) -> Result<impl IntoResponse, AppError> {
-    let client = &state.mongo_client;
-    // println!("{} --- {}", user_creds.email, user_creds.password);
-    let argo = Argon2::default();
+    let anti_timing_attacks = sleep(Duration::from_millis(550));
+    let handler = async {
+        let client = &state.mongo_client;
+        let argo = Argon2::default();
 
-    let query_res = client
-        .database(DB_USER)
-        .collection::<UserDocument>(COL_USER_CREDS)
-        .find_one(doc! {"_id": &user_creds.email}, None)
-        .await;
-    if let Ok(Some(user_acc)) = query_res {
-        let hash = match PasswordHash::new(&user_acc.pass_hash) {
-            Ok(hash) => hash,
-            Err(_) => return Err(AppError(anyhow::anyhow!("wut"))),
-        };
+        let query_res = client
+            .database(DB_USER)
+            .collection::<UserDocument>(COL_USER_CREDS)
+            .find_one(doc! {"_id": &user_creds.email}, None)
+            .await;
+        if let Ok(Some(user_acc)) = query_res {
+            let hash = match PasswordHash::new(&user_acc.pass_hash) {
+                Ok(hash) => hash,
+                Err(_) => return Err(AppError(anyhow::anyhow!("wut"))),
+            };
 
-        if let None = user_creds.password {
-            return Err(AppError::from(anyhow!("no password bru")));
-        }
-        match argo.verify_password(user_creds.password.unwrap().as_bytes(), &hash) {
-            Ok(_) => {
-                let sess_id = mongodb::bson::Uuid::from(uuid::Uuid::new_v4());
-                client
-                    .database(DB_SESSIONS)
-                    .collection(COL_USER_SESS)
-                    .insert_one(
-                        SessionDocument {
-                            _id: sess_id,
-                            user_email: user_creds.email,
-                            expiry_date: Utc::now().add(Days::new(30)),
-                        },
-                        None,
-                    )
-                    .await?;
-
-                let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
-                    .domain("localhost")
-                    .path("/")
-                    .http_only(true);
-                return Ok((StatusCode::OK, [(header::SET_COOKIE, cook.to_string())]));
+            if let None = user_creds.password {
+                return Err(AppError::from(anyhow!("no password bru")));
             }
-            Err(_) => {
-                return Ok((
-                    StatusCode::UNAUTHORIZED,
-                    [(header::SET_COOKIE, "".to_string())],
-                ))
+            match argo.verify_password(user_creds.password.unwrap().as_bytes(), &hash) {
+                Ok(_) => {
+                    let sess_id = mongodb::bson::Uuid::from(uuid::Uuid::new_v4());
+                    client
+                        .database(DB_SESSIONS)
+                        .collection(COL_USER_SESS)
+                        .insert_one(
+                            SessionDocument {
+                                _id: sess_id,
+                                user_email: user_creds.email,
+                                expiry_date: Utc::now().add(Days::new(30)),
+                            },
+                            None,
+                        )
+                        .await?;
+
+                    let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
+                        .domain("localhost")
+                        .path("/")
+                        .http_only(true);
+                    return Ok((StatusCode::OK, [(header::SET_COOKIE, cook.to_string())]));
+                }
+                Err(_) => {
+                    return Ok((
+                        StatusCode::UNAUTHORIZED,
+                        [(header::SET_COOKIE, "".to_string())],
+                    ))
+                }
             }
+        } else {
+            return Ok((
+                StatusCode::UNAUTHORIZED,
+                [(header::SET_COOKIE, "".to_string())],
+            ));
         }
-    } else {
-        let _ = argo.hash_password(
-            "To Prevent Timing Attacks".as_bytes(),
-            &SaltString::generate(&mut OsRng),
-        );
-        return Ok((
-            StatusCode::UNAUTHORIZED,
-            [(header::SET_COOKIE, "".to_string())],
-        ));
-    }
+    };
+    join!(handler, anti_timing_attacks).0
 }
 
 async fn register_user(
@@ -198,74 +200,66 @@ async fn send_email_reset(
     State(state): State<Arc<SharedState>>,
     Json(user_creds): Json<UserLoginCredentials>,
 ) -> Result<impl IntoResponse, AppError> {
-    let client = &state.mongo_client;
+    let anti_timing_attacks = sleep(Duration::from_millis(550));
+    let handler = async {
+        let client = &state.mongo_client;
 
-    let password_reset_token = mongodb::bson::Uuid::from(uuid::Uuid::new_v4());
+        let password_reset_token = mongodb::bson::Uuid::from(uuid::Uuid::new_v4());
 
-    let expire_date = Utc::now().add(chrono::Duration::days(1));
+        let expire_date = Utc::now().add(chrono::Duration::days(1));
 
-    let user_acc = client
-        .database(DB_USER)
-        .collection::<UserDocument>(COL_USER_CREDS)
-        .find_one(doc! {"_id": &user_creds.email}, None)
-        .await?;
-    if let None = user_acc {
-        //"If you have an account with us, you will receive an email"
-        return Ok(StatusCode::OK);
-    }
-
-    client
-        .database(DB_SESSIONS)
-        .collection(COL_PASSWORD_RESET)
-        .insert_one(
-            SessionDocument {
-                _id: password_reset_token.clone(),
-                expiry_date: expire_date,
-                user_email: user_creds.email.clone(),
-            },
-            None,
-        )
-        .await?;
-
-    //send email
-    let recipient = Destination::builder()
-        .to_addresses(&user_creds.email)
-        .build();
-    let subject = Content::builder()
-        .data("Reset Your Password")
-        .build()
-        .expect("Building Email");
-    let body = Content::builder()
-        .data(format! {"bruhhh {}", password_reset_token})
-        .build()
-        .expect("Building Email");
-    let body = Body::builder().text(body).build();
-    let email_content = EmailContent::builder()
-        .simple(Message::builder().subject(subject).body(body).build())
-        .build();
-
-    let send_res = state
-        .ses_client
-        .send_email()
-        .from_email_address("do-not-reply@sinnguyen.dev")
-        .destination(recipient)
-        .content(email_content)
-        .send()
-        .await;
-
-    match send_res {
-        Err(err) => {
-            println!("{:?}", err.source());
-            client
-                .database(DB_SESSIONS)
-                .collection::<SessionDocument>(COL_PASSWORD_RESET)
-                .delete_one(doc! {"_id": password_reset_token.to_string()}, None)
-                .await?;
-            return Ok(StatusCode::SERVICE_UNAVAILABLE);
+        let user_acc = client
+            .database(DB_USER)
+            .collection::<UserDocument>(COL_USER_CREDS)
+            .find_one(doc! {"_id": &user_creds.email}, None)
+            .await?;
+        if let None = user_acc {
+            //"If you have an account with us, you will receive an email"
+            return Ok(StatusCode::OK);
         }
-        Ok(res) => {
-            if let None = res.message_id {
-                println!("No Message ID from SES");
+
+        client
+            .database(DB_SESSIONS)
+            .collection(COL_PASSWORD_RESET)
+            .insert_one(
+                SessionDocument {
+                    _id: password_reset_token.clone(),
+                    expiry_date: expire_date,
+                    user_email: user_creds.email.clone(),
+                },
+                None,
+            )
+            .await?;
+
+        //send email
+        let recipient = Destination::builder()
+            .to_addresses(&user_creds.email)
+            .build();
+        let subject = Content::builder()
+            .data("Reset Your Password")
+            .build()
+            .expect("Building Email");
+        let body = Content::builder()
+            .data(format! {"bruhhh {}", password_reset_token})
+            .build()
+            .expect("Building Email");
+        let body = Body::builder().text(body).build();
+        let email_content = EmailContent::builder()
+            .simple(Message::builder().subject(subject).body(body).build())
+            .build();
+
+        let send_res = state
+            .ses_client
+            .send_email()
+            .from_email_address("do-not-reply@sinnguyen.dev")
+            .destination(recipient)
+            .content(email_content)
+            .send()
+            .await;
+
+        match send_res {
+            Err(err) => {
+                println!("{:?}", err.source());
                 client
                     .database(DB_SESSIONS)
                     .collection::<SessionDocument>(COL_PASSWORD_RESET)
@@ -273,9 +267,21 @@ async fn send_email_reset(
                     .await?;
                 return Ok(StatusCode::SERVICE_UNAVAILABLE);
             }
+            Ok(res) => {
+                if let None = res.message_id {
+                    println!("No Message ID from SES");
+                    client
+                        .database(DB_SESSIONS)
+                        .collection::<SessionDocument>(COL_PASSWORD_RESET)
+                        .delete_one(doc! {"_id": password_reset_token.to_string()}, None)
+                        .await?;
+                    return Ok(StatusCode::SERVICE_UNAVAILABLE);
+                }
+            }
         }
-    }
-    Ok(StatusCode::OK)
+        Ok(StatusCode::OK)
+    };
+    join!(handler, anti_timing_attacks).0
 }
 
 #[derive(Deserialize)]
@@ -334,7 +340,7 @@ async fn reset_password(
         .update_one(find_account_by_email, update, None)
         .await?;
     if update_res.modified_count == 1 {
-        let del_sess = client
+        client
             .database(DB_SESSIONS)
             .collection::<SessionDocument>(COL_PASSWORD_RESET)
             .delete_one(find_reset_by_uuid, None)
