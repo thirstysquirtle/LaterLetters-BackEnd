@@ -43,6 +43,12 @@ async fn login_user(
     State(state): State<Arc<SharedState>>,
     Json(user_creds): Json<UserLoginCredentials>,
 ) -> Result<impl IntoResponse, AppError> {
+    if user_creds.email.len() > 256 {
+        return Ok((
+            StatusCode::IM_A_TEAPOT,
+            [(header::SET_COOKIE, "".to_string())],
+        ));
+    }
     let anti_timing_attacks = sleep(Duration::from_millis(550));
     let handler = async {
         let client = &state.mongo_client;
@@ -105,6 +111,12 @@ async fn register_user(
     State(state): State<Arc<SharedState>>,
     Json(user_creds): Json<UserLoginCredentials>,
 ) -> Result<impl IntoResponse, AppError> {
+    if user_creds.email.len() > 256 {
+        return Ok((
+            StatusCode::IM_A_TEAPOT,
+            [(header::SET_COOKIE, "".to_string())],
+        ));
+    }
     let client = &state.mongo_client;
     let user_acc = client
         .database(DB_USER)

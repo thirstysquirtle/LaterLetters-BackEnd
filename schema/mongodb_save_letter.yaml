@@ -1,0 +1,116 @@
+#This is just me "Sketching"
+#Data Modelling for the LatterLetters Api
+
+
+document_schema:
+  - SessionDocument:
+    desc: "Goes into DB_SESSIONS"
+    schema: &SessionDocument
+      _id: "UUID Token"
+      user_email: "String"
+      expiryDate: "DateTime"
+
+
+
+#actions needed
+# Fetch all letters, Fetch all letters for a tag,
+#Fetch all tags for a user
+# Delete a tag, Delete untagged Letters, Delete a letter
+#Updated a letter, add/remove tags
+
+Get_Actions:
+  fetch_all_letters:
+    key: "user's email"
+    steps:
+      - "DB_USER_LETTERS"
+      - "Collection(user's email)"
+  fetch_all_tags:
+    key: "user's email"
+    steps:
+      - "DB_USER"
+      - "COL_USER_TAGS"
+  fetch_letters_for_tags:
+    key:
+      - "user's email"
+      - "tag"
+    steps:
+      - "DB_USER_LETTERS"
+      - "Collection(user's emails)"
+      - "Use Index to Fetch Letter Documents" 
+
+Update_Actions:
+  update_a_letter:
+    key:
+      - "user's email"
+      - "letter _id"
+    steps:
+      - "DB_USER_LETTERS"
+      - "Collection(user's emails)"
+      - "Use ID to replace Letter"
+
+Delete_Actions:
+  delete_a_tag:
+    key:
+      - "user's email"
+      - "tag"
+    steps:
+      - "DB_USER_LETTERS...Collection(user_email)"
+      - "Use Index(tag) to pull tag from tags array"
+      - "DB_USER...COL_USER_TAG"
+      - "Pull tag from user's tags list"
+  delete_untagged_letters:
+    key:
+      "user's email"
+    steps: 
+      - "DB_USER_LETTERS...Collection(user's email)"
+      - "Use Index{$size: 0} to delete letters"
+
+
+#1 Collection will be Generated per User. name = email
+#Documents here use an auto generated _id
+#Many Documents per Email
+DB_USER_LETTERS:
+  name: "user_letters"
+  collections:
+    name: "email of user"
+    indexes: "multi-key Index by Tags field"
+    schema:
+      _id: "letter id"
+      body: "string"
+      tags: "array of tags"
+
+#Documents here use the user Email as the _id
+#1 Document per Email
+DB_USER:
+  name: "user_auth"
+  collections:
+    - COL_USER_CREDS:
+      name: "user_credentials"
+      desc: "This just stores the password hash"
+      schema:
+        _id: "Email"
+        password_hash: "Argon2 Hash"
+    - COL_USER_TAGS:
+      name: "user_tags"
+      desc: "Tags that the User Uses"
+      schema:
+        _id: "Email"
+        tags:
+          arrayOf:
+            id: "name+color"
+            color: "string"
+            name: "string"
+
+#Documents here use a UUID token as the _id
+#1 Document per UUID
+DB_SESSIONS:
+  name: "login_sessions"
+  collections:
+    - COL_USER_SESS:
+      name: "user_sessions"
+      desc: "use UUID & user emails to verify requests"
+      schema: *SessionDocument
+    - COL_PASSWORD_RESET:
+      name: "password_reset_tokens"
+      desc: "use the UUID to reset the email's account password"
+      schema: *SessionDocument

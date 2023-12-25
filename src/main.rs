@@ -52,9 +52,9 @@ pub struct SharedState {
     mongo_client: Client,
     ses_client: aws_sdk_sesv2::Client,
 }
-
+mod app_paths;
+mod middleware;
 mod auth_paths;
-
 
 #[tokio::main]
 async fn main() {
@@ -66,11 +66,10 @@ async fn main() {
     let aws_config = aws_config::from_env().region(region_provider).load().await;
     let ses_client = aws_sdk_sesv2::Client::new(&aws_config);
 
-    let shared = SharedState {
+    let shared_state = Arc::new(SharedState {
         mongo_client,
         ses_client,
-    };
-    let shared_state = Arc::new(shared);
+    });
 
     let app = Router::new().nest("/user", auth_paths::build(shared_state));
 

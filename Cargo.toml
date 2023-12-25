@@ -6,15 +6,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = "0.7.1"
 tokio = { version = "1.34.0", features = ["full"] }
-rand = "0.8"
 serde = { version = "1", features = ["derive"] }
-futures = "0.3.28"
-argon2 = "0.5.2"
-chrono = { version = "0.4.31", features = ["serde"]}
 anyhow = "1.0.75"
+futures = "0.3.28"
+
+chrono = { version = "0.4.31", features = ["serde"]}
+
+axum = "0.7.1"
 axum-extra = { version = "0.9.0", features = ["cookie"]}
+
+argon2 = "0.5.2"
 aws-config = { features = ["behavior-version-latest"], version = "1.1.1"}
 aws-sdk-sesv2 = "1.7.0"
 
