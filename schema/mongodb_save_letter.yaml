@@ -95,11 +95,10 @@ DB_USER:
       desc: "Tags that the User Uses"
       schema:
         _id: "Email"
-        tags:
-          arrayOf:
-            id: "name+color"
-            color: "string"
-            name: "string"
+        (tagId):
+          color: "String"
+          name: "String"
+          count: "Cuz why not? Yk"
 
 #Documents here use a UUID token as the _id
 #1 Document per UUID
