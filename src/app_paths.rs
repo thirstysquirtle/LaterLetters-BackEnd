@@ -1,13 +1,19 @@
-use crate::{AppError, SharedState};
+use crate::{AppError, SharedState, DB_USER};
 use axum::{
     extract::{Json, State},
     http::StatusCode,
     response::IntoResponse,
 };
 use core::result::Result::Ok;
+use mongodb::{
+    bson::{bson, doc, Bson, Document},
+    options::UpdateOptions,
+};
 use serde::{Deserialize, Serialize};
-use std::{collections::hash_set, sync::Arc};
-use mongodb::bson::doc;
+use std::{
+    collections::{hash_set, HashMap},
+    sync::Arc,
+};
 
 static DB_USER_LETTERS: &str = "user_letters";
 static COL_USER_TAGS: &str = "tags_per_user";
@@ -16,17 +22,16 @@ static COL_USER_TAGS: &str = "tags_per_user";
 #[derive(Deserialize, Serialize)]
 struct SaveLetterPayload {
     email: String,
-    letter: LetterDocument   
+    letter: LetterDocument,
 }
 #[derive(Deserialize, Serialize)]
 struct LetterDocument {
     body: String,
-    tag_list: Vec<Tag>,
+    //The key is the TagId which is a composite of the name + color
+    tag_list: HashMap<String, Tag>,
 }
 #[derive(Deserialize, Serialize)]
 struct Tag {
-    //The ID is a composite name + color
-    _id: String,
     name: String,
     color: String,
 }
@@ -39,8 +44,33 @@ async fn save_letter(
         return Ok(StatusCode::PAYLOAD_TOO_LARGE);
     };
     let client = &state.mongo_client;
-    let res = client.database(DB_USER_LETTERS).collection(&payload.email).insert_one(payload.letter ,None).await?;
-    
+    client
+        .database(DB_USER_LETTERS)
+        .collection(&payload.email)
+        .insert_one(payload.letter, None)
+        .await?;
+
+    let set_doc = Document::new();
+    let inc_doc = Document::new();
+    for (&id, &tag) in payload.letter.tag_list.iter() {
+        set_doc.insert(&id, 
+            doc! {"name": tag.name, "color": tag.color});
+        inc_doc.insert(format!("{}.count", tag.name), 1);
+    }
+    let update_doc = doc! {
+        "$set": set_doc,
+        "$inc": inc_doc
+    };
+
+    client
+        .database(DB_USER)
+        .collection(COL_USER_TAGS)
+        .update_one(
+            doc! {"_id": payload.email},
+            update_doc,
+            UpdateOptions::builder().upsert(true).build(),
+        )
+        .await?;
 
     Ok(())
 }
