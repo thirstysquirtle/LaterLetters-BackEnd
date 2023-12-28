@@ -1,13 +1,22 @@
-use crate::{AppError, SharedState, DB_USER};
-use axum::{
-    extract::{Json, State},
-    http::StatusCode,
-    response::IntoResponse,
+use crate::{
+    my_middleware, AppError, SessionDocument, SharedState, COL_USER_SESS, COOKIE_SESSION,
+    DB_SESSIONS, DB_USER,
 };
+use anyhow::anyhow;
+use axum::{
+    extract::{Json, Request, State},
+    http::{Request, StatusCode},
+    response::IntoResponse,
+    routing::post,
+    Router,
+};
+use axum_extra::extract::CookieJar;
 use core::result::Result::Ok;
+use futures::{StreamExt, TryStreamExt};
 use mongodb::{
     bson::{bson, doc, Bson, Document},
     options::UpdateOptions,
+    Client,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -19,42 +28,58 @@ static DB_USER_LETTERS: &str = "user_letters";
 static COL_USER_TAGS: &str = "tags_per_user";
 
 // region: ↓ Save a Letter↓
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct SaveLetterPayload {
     email: String,
-    letter: LetterDocument,
+    letter: LetterPayload,
 }
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Clone)]
+struct LetterPayload {
+    body: String,
+    //The key is the TagId which is a composite of the name + color
+    tag_list: HashMap<String, TagPayload>,
+}
+#[derive(Serialize)]
 struct LetterDocument {
     body: String,
     //The key is the TagId which is a composite of the name + color
-    tag_list: HashMap<String, Tag>,
+    tag_list: HashMap<String, TagPayload>, 
+    tag_IDs: Vec<String>
+    //This Vec is for MongoDB multiindex and will be derived from the keys of the Map
 }
-#[derive(Deserialize, Serialize)]
-struct Tag {
+#[derive(Deserialize, Serialize, Clone)]
+struct TagPayload {
     name: String,
     color: String,
 }
+#[derive(Deserialize, Serialize)]
+struct DontCare {}
 
 async fn save_letter(
     State(state): State<Arc<SharedState>>,
+    jar: CookieJar,
     Json(payload): Json<SaveLetterPayload>,
 ) -> Result<impl IntoResponse, AppError> {
+    let client = &state.mongo_client;
+    my_middleware::validate_session(&client, &payload.email, &jar).await?;
     if payload.letter.body.len() > 10000 {
         return Ok(StatusCode::PAYLOAD_TOO_LARGE);
     };
-    let client = &state.mongo_client;
+    let tag_IDs = Vec::with_capacity(payload.letter.tag_list.len());
+    for (&key, _) in payload.letter.tag_list.iter() {
+        tag_IDs.push(&key);
+    }
+
     client
         .database(DB_USER_LETTERS)
         .collection(&payload.email)
-        .insert_one(payload.letter, None)
+        .insert_one(payload.letter.clone(), None)
         .await?;
 
-    let set_doc = Document::new();
-    let inc_doc = Document::new();
-    for (&id, &tag) in payload.letter.tag_list.iter() {
-        set_doc.insert(&id, 
-            doc! {"name": tag.name, "color": tag.color});
+    let mut set_doc = Document::new();
+    let mut inc_doc = Document::new();
+    for (id, tag) in payload.letter.tag_list.into_iter() {
+        set_doc.insert(&id, doc! {"name": &tag.name, "color": tag.color});
         inc_doc.insert(format!("{}.count", tag.name), 1);
     }
     let update_doc = doc! {
@@ -64,7 +89,7 @@ async fn save_letter(
 
     client
         .database(DB_USER)
-        .collection(COL_USER_TAGS)
+        .collection::<DontCare>(COL_USER_TAGS)
         .update_one(
             doc! {"_id": payload.email},
             update_doc,
@@ -72,10 +97,75 @@ async fn save_letter(
         )
         .await?;
 
-    Ok(())
+    Ok(StatusCode::OK)
 }
-// endregion: ↑Save a Letter↑
+// endregion: ↑ Save a Letter ↑
 
-pub fn build(shared_state: Arc<SharedState>) -> Router {
-    Router::new().with_state(shared_state)
+// region: ↓ Query Letters ↓
+
+#[derive(Deserialize)]
+struct EmailPayload {
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct TagResponse {
+    name: String,
+    color: String,
+    count: u32,
+}
+async fn query_user_tags(
+    State(state): State<Arc<SharedState>>,
+    jar: CookieJar,
+    Json(payload): Json<EmailPayload>,
+) -> Result<Json<HashMap<String, TagResponse>>, AppError> {
+    my_middleware::validate_session(&state.mongo_client, &payload.email, &jar).await?;
+    let res = state
+        .mongo_client
+        .database(DB_USER)
+        .collection::<HashMap<String, TagResponse>>(COL_USER_TAGS)
+        .find_one(doc! {"_id": payload.email}, None)
+        .await?;
+    match res {
+        Some(obj) => Ok(Json(obj)),
+        None => Ok(Json(HashMap::new())),
+    }
+    // return Ok(Json(res))
+
+    // Err(anyhow!("as").into())
+}
+
+async fn query_all_letters(
+    State(state): State<Arc<SharedState>>,
+    jar: CookieJar,
+    Json(payload): Json<EmailPayload>,
+) -> Result<Json<Vec<LetterDocument>>, AppError> {
+    my_middleware::validate_session(&state.mongo_client, &payload.email, &jar).await?;
+    let cursor = state
+        .mongo_client
+        .database(DB_USER_LETTERS)
+        .collection::<LetterDocument>(&payload.email)
+        .find(None, None)
+        .await?;
+
+    Ok(Json(cursor.try_collect().await?))
+}
+
+struct TaggedLettersPayload {
+    email: String,
+    tag: String
+}
+async fn query_letters_in_a_tag(
+    State(state): State<Arc<SharedState>>,
+    jar: CookieJar,
+    Json(payload): Json<EmailPayload>,
+) -> Result<Json<Vec<LetterDocument>>, AppError> {
+
+
+}
+// endregion: ↑ Query Letters ↑
+fn build(shared_state: Arc<SharedState>) -> Router {
+    Router::new()
+        .route("/create", post(save_letter))
+        .with_state(shared_state)
 }

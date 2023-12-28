@@ -1,9 +1,10 @@
 use aws_config::{meta::region::RegionProviderChain, Region};
 use axum::{
-    http::StatusCode,
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
     Router,
 };
+use axum_extra::extract::cookie::Cookie;
 use chrono::{DateTime, Utc};
 use mongodb::{
     bson::doc,
@@ -35,7 +36,16 @@ struct AppError(anyhow::Error);
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         println!("{}", self.0);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Bruuhhh").into_response()
+        let cook = Cookie::build((COOKIE_SESSION, "".to_string()))
+            .domain("localhost")
+            .path("/")
+            .http_only(true);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::SET_COOKIE, cook.to_string())],
+            "Bruuhhh",
+        )
+            .into_response()
     }
 }
 
@@ -53,8 +63,8 @@ pub struct SharedState {
     ses_client: aws_sdk_sesv2::Client,
 }
 mod app_paths;
-mod middleware;
 mod auth_paths;
+mod my_middleware;
 
 #[tokio::main]
 async fn main() {
