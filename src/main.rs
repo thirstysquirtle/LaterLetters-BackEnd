@@ -14,6 +14,11 @@ use mongodb::{
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, sync::Arc};
 
+use crate::{
+    app_paths::LetterDocument,
+    constants::{COL_USER_TAGS, DB_USER_LETTERS},
+};
+
 ///Every Document in this DB has the user's Email as the key.
 static DB_USER: &str = "user_auth";
 static COL_USER_CREDS: &str = "user_credentials";
@@ -64,6 +69,7 @@ pub struct SharedState {
 }
 mod app_paths;
 mod auth_paths;
+mod constants;
 mod my_middleware;
 
 #[tokio::main]
@@ -132,5 +138,6 @@ async fn start_mongo() -> mongodb::error::Result<Client> {
             None,
         )
         .await?;
+
     Ok(client)
 }

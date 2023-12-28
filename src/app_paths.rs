@@ -1,22 +1,22 @@
 use crate::{
     my_middleware, AppError, SessionDocument, SharedState, COL_USER_SESS, COOKIE_SESSION,
-    DB_SESSIONS, DB_USER,
+    DB_SESSIONS, DB_USER, constants::{DB_USER_LETTERS, COL_USER_TAGS},
 };
 use anyhow::anyhow;
 use axum::{
     extract::{Json, Request, State},
-    http::{Request, StatusCode},
+    http::{ StatusCode},
     response::IntoResponse,
     routing::post,
     Router,
 };
 use axum_extra::extract::CookieJar;
 use core::result::Result::Ok;
-use futures::{StreamExt, TryStreamExt};
+use futures::stream::{StreamExt, TryStreamExt, TryStream};
 use mongodb::{
     bson::{bson, doc, Bson, Document},
     options::UpdateOptions,
-    Client,
+    Client, IndexModel,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -24,8 +24,7 @@ use std::{
     sync::Arc,
 };
 
-static DB_USER_LETTERS: &str = "user_letters";
-static COL_USER_TAGS: &str = "tags_per_user";
+
 
 // region: ↓ Save a Letter↓
 #[derive(Deserialize)]
@@ -39,12 +38,12 @@ struct LetterPayload {
     //The key is the TagId which is a composite of the name + color
     tag_list: HashMap<String, TagPayload>,
 }
-#[derive(Serialize)]
-struct LetterDocument {
+#[derive(Serialize, Deserialize)]
+pub struct LetterDocument {
     body: String,
     //The key is the TagId which is a composite of the name + color
     tag_list: HashMap<String, TagPayload>, 
-    tag_IDs: Vec<String>
+    tag_ids: Vec<String>
     //This Vec is for MongoDB multiindex and will be derived from the keys of the Map
 }
 #[derive(Deserialize, Serialize, Clone)]
@@ -65,16 +64,20 @@ async fn save_letter(
     if payload.letter.body.len() > 10000 {
         return Ok(StatusCode::PAYLOAD_TOO_LARGE);
     };
-    let tag_IDs = Vec::with_capacity(payload.letter.tag_list.len());
-    for (&key, _) in payload.letter.tag_list.iter() {
-        tag_IDs.push(&key);
+    let mut tag_ids = Vec::with_capacity(payload.letter.tag_list.len());
+    for (key, _) in payload.letter.tag_list.iter() {
+        tag_ids.push(key.clone());
     }
+    let doc_to_insert = LetterDocument {
+        tag_ids: tag_ids,
+        tag_list: payload.letter.tag_list.clone(),
+        body: payload.letter.body
+    };
+    let user_letter_collection = client.database(DB_USER_LETTERS).collection(&payload.email);
 
-    client
-        .database(DB_USER_LETTERS)
-        .collection(&payload.email)
-        .insert_one(payload.letter.clone(), None)
-        .await?;
+    user_letter_collection.create_index(IndexModel::builder().keys(doc! {"tag_ids": 1}).build(), None).await?;
+    user_letter_collection.insert_one(doc_to_insert, None).await?;
+    
 
     let mut set_doc = Document::new();
     let mut inc_doc = Document::new();
@@ -158,12 +161,36 @@ struct TaggedLettersPayload {
 async fn query_letters_in_a_tag(
     State(state): State<Arc<SharedState>>,
     jar: CookieJar,
-    Json(payload): Json<EmailPayload>,
+    Json(payload): Json<TaggedLettersPayload>,
 ) -> Result<Json<Vec<LetterDocument>>, AppError> {
+    my_middleware::validate_session(&state.mongo_client, &payload.email, &jar).await?;
+    let cursor = state.mongo_client.database(DB_USER_LETTERS).collection::<LetterDocument>(&payload.email).find(doc! {"tag_ids": {"$all": [payload.tag]}}, None).await?;
 
-
+    Ok(Json(cursor.try_collect().await?))
 }
 // endregion: ↑ Query Letters ↑
+
+// region: ↓ Delete Actions ↓
+#[derive(Deserialize)]
+struct DeleteLetterPayload {
+    email: String,
+    letter_id: [u8;12],
+}
+
+async fn delete_letter(
+    State(state): State<Arc<SharedState>>,
+    jar: CookieJar,
+    Json(payload): Json<DeleteLetterPayload>,
+
+) -> Result<impl IntoResponse, AppError> {
+    my_middleware::validate_session(&state.mongo_client, &payload.email, &jar).await?;
+
+    Ok(())
+
+}
+// endregion: ↑ Delete Actions ↑
+
+
 fn build(shared_state: Arc<SharedState>) -> Router {
     Router::new()
         .route("/create", post(save_letter))
