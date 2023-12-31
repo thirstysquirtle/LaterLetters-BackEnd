@@ -25,7 +25,29 @@ components:
       headers:
         Set-Cookie: 
           $ref: "#/components/headers/LoginCookie"
-        
+
+  schemas:
+    ArrayOfLetters:
+      type: array
+      items:
+        type: object
+        properties:
+          body:
+            type: string
+          tag_ids:
+            type: array
+            items:
+              type: string
+          tag_list:
+            type: object
+            additionalProperties:
+              type: object
+              properties:
+                name:
+                  type: string
+                color:
+                  type: string
+
   requestBodies:
     UserCredentials:
       description: Credentials for loging in and creating Account
@@ -42,15 +64,21 @@ components:
                 type: string
                 example: password123
 
+
   securitySchemes:
     sessionKeyCookie:
       type: apiKey
       in: cookie
-      name: session_key
+      name: sesshawn
+
+    emailHeader:
+      type: apiKey
+      in: header
+      name: "X-User-Email"
 
 
 paths:
-  /letter/create:
+  /api/letter/create:
     post:
       security:
         - sessionKeyCookie: []
@@ -76,7 +104,175 @@ paths:
         "418":
           description: Issue Adding Letter
 
+  /api/letters:
+    get:
+      tags:
+        - Letters
+      operationId: queryLetters
+      security:
+        - sessionKeyCookie: []
+        - emailHeader: []
+      responses:
+        "200":
+          description: "Array of Letters"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArrayOfLetters"
+        "500":
+          description: "Something went wrong"
+        "401":
+          description: "wrong creds"
+    post:
+      tags:
+        - Letters
+      operationId: createLetter
+      security:
+        - sessionKeyCookie: []
+        - emailHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                body:
+                  type: string
+                tag_list:
+                  type: object
+                  additionalProperties: 
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      color:
+                        type: string
+      responses:
+        "200":
+          description: "Letter Saved Succesfully"
+        "500":
+          description: "Something went wrong"
+        "401":
+          description: "wrong creds"
 
+  /api/letters/{tag_id}:
+    get:
+      tags:
+        - Letters
+      operationId: getLettersByTag
+      security:
+        - SessionKeyCookie: []
+        - emailHeader: []
+      parameters:
+        - name: tag_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200": 
+            description: "Array of Letters that contain the Tag"
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/ArrayOfLetters"
+        "500":
+          description: "Something went wrong server side"
+        "401":
+          description: "wrong creds"
+    delete:
+      tags:
+        - Letters
+      operationId: deleteTaggedLetters
+      security:
+        - SessionKeyCookie: []
+        - emailHeader: []
+      parameters:
+        - name: tag_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200": 
+          description: "Deleted Succesfully"
+        "500":
+          description: "Something went wrong server side"
+        "401":
+          description: "wrong creds"
+
+  /api/letters/{letter_id}:
+    delete:
+      tags:
+        - Letters
+      operationId: deleteLetterById
+      security:
+        - SessionKeyCookie: []
+        - emailHeader: []
+      parameters:
+        - name: letter_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200": 
+            description: "Letter Deleted Succ"
+        "500":
+          description: "Something went wrong server side"
+        "401":
+          description: "wrong creds"
+  /api/tags:
+    get:
+      tags:
+        - Letters
+      operationId: getTags
+      security:
+        - SessionKeyCookie: []
+        - emailHeader: []
+      responses:
+        "200": 
+            description: "An Object that maps tag_id to another object containing tagColor and tagName"
+            content:
+              application/json:
+                schema:
+                  type: object
+                  additionalProperties: 
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      color:
+                        type: string
+        "500":
+          description: "Something went wrong server side"
+        "401":
+          description: "wrong creds"
+  /api/tags/{tag_id}:
+    delete:
+      tags:
+        - Letter
+      operationId: deleteTag
+      summary: Deletes a tag, but no letters
+      security:
+        - SessionKeyCookie: []
+        - emailHeader: []
+      parameters:
+        - name: tag_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200": 
+            description: "Tag Succesfully Deleted"
+        "500":
+          description: "Something went wrong server side"
+        "401":
+          description: "wrong creds"
+
+        
 
   /user/login:
     post:

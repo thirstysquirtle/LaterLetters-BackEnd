@@ -87,7 +87,7 @@ async fn main() {
         ses_client,
     });
 
-    let app = Router::new().nest("/user", auth_paths::build(shared_state));
+    let app = Router::new().nest("/user", auth_paths::build(shared_state.clone()).nest("/api", app_paths::build(shared_state)));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("listening on {}", addr);

@@ -287,7 +287,7 @@ async fn delete_tagged_letters(
 
 // endregion: ↑ Delete Actions ↑
 
-fn build(shared_state: Arc<SharedState>) -> Router {
+pub fn build(shared_state: Arc<SharedState>) -> Router {
     Router::new()
         .route("/letters", get(query_all_letters).post(save_letter))
         .route("/letters/:tag_id", get(query_letters_in_a_tag).delete(delete_tagged_letters))

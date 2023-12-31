@@ -49,6 +49,16 @@ Update_Actions:
       - "Use ID to replace Letter"
 
 Delete_Actions:
+  delete_a_letter:
+    key:
+      - "user's email"
+      - "LetterID"
+    steps:
+      - "DB_USER_LETTERS...Col(user_email)"
+      - "Delete by ID"
+      - "DB_USER...COL_USER_TAG...DOC(user_email)"
+      - "For each tagID: dec"
+
   delete_a_tag:
     key:
       - "user's email"
@@ -56,9 +66,21 @@ Delete_Actions:
     steps:
       - "DB_USER_LETTERS...Collection(user_email)"
       - "Use Index(tag) to pull tag from tags array"
-      - "DB_USER...COL_USER_TAG"
-      - "Pull tag from user's tags list"
+      - "DB_USER...COL_USER_TAG...DOC(user_email)"
+      - "Unset Tag from Object"
+  delete_tagged_letters:
+    key:
+      - "user's email"
+      - "tag"
+    steps:
+      - "DB_USER_LETTERS...COL(user_email)"
+      - "Delete all Letters with Tag"
+      - "DB_USER...COL_USER_TAG...DOC(user_email)"
+      - "Unset Tag from object"
+
+
   delete_untagged_letters:
+    alert: "Saving a count of untagged letters is too much of a pain in the ass, UI will be different for this one specifically."
     key:
       "user's email"
     steps: 
