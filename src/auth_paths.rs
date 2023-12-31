@@ -45,7 +45,7 @@ async fn login_user(
 ) -> Result<impl IntoResponse, AppError> {
     if user_creds.email.len() > 256 {
         return Ok((
-            StatusCode::IM_A_TEAPOT,
+            StatusCode::PAYLOAD_TOO_LARGE,
             [(header::SET_COOKIE, "".to_string())],
         ));
     }
@@ -92,14 +92,14 @@ async fn login_user(
                 }
                 Err(_) => {
                     return Ok((
-                        StatusCode::UNAUTHORIZED,
+                        StatusCode::OK,
                         [(header::SET_COOKIE, "".to_string())],
                     ))
                 }
             }
         } else {
             return Ok((
-                StatusCode::UNAUTHORIZED,
+                StatusCode::OK,
                 [(header::SET_COOKIE, "".to_string())],
             ));
         }
@@ -113,7 +113,7 @@ async fn register_user(
 ) -> Result<impl IntoResponse, AppError> {
     if user_creds.email.len() > 256 {
         return Ok((
-            StatusCode::IM_A_TEAPOT,
+            StatusCode::PAYLOAD_TOO_LARGE,
             [(header::SET_COOKIE, "".to_string())],
         ));
     }

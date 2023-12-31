@@ -285,11 +285,14 @@ paths:
         
       responses:
         "200": 
+          description: "Login Succes or Fail"
           $ref: "#/components/responses/SessionCookie"
-        "401":
-          description: Login Fail
+        "413":
+          description: "Payload too Large"
+        "500":
+          description: "Server side error"
 
-  /user/create:
+  /user/register:
     post:
       tags:
         - Auth
@@ -297,10 +300,13 @@ paths:
       requestBody:
         $ref: "#/components/requestBodies/UserCredentials"
       responses:
-        "200": 
+        "200":
+          description: "User Created"
           $ref: "#/components/responses/SessionCookie"
-        "418":
-          description: User Not Created
+        "413":
+          description: Payload too large
+        "500":
+          description: Server side error
 
   /user/logout:
     put:
@@ -326,6 +332,8 @@ paths:
                 description: deletes the cookie by setting it to blank
         "418":
           description: Unconfirmed Logout
+        "500":
+          description: Server side error
 
   /user/forgot-password:
     post:
@@ -346,26 +354,35 @@ paths:
           description: Reset link will be sent if email exists.
         "500":
           description: Server error
+        "503":
+          description: Problem with AWS SES
 
-  /user/reset-password/{resetJWT}:
-    put:
+  /user/reset-password:
+    post:
       tags:
         - Auth
       summary: If JWT.valid(), reset password
-      parameters:
-        - in: path
-          required: true
-          name: resetJWT
-          schema:
-            type: string
-            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                uuid:
+                  type: string
       responses:
         "200": 
           description: Password Succesfully Reset
         "401":
           description: Invalid JWT, u sneaky boi
+        "500":
+          description: Server Error
         "418": 
-          description: server err
+          description: Not supposed to happen
 
       
 
