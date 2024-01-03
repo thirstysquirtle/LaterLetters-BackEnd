@@ -1,7 +1,7 @@
-openapi: '3.0.2'
+openapi: "3.0.2"
 info:
   title: LaterLetters Api
-  version: '1.0'
+  version: "1.0"
 servers:
   - url: http://localhost:3000/
 
@@ -9,7 +9,6 @@ tags:
   - name: Auth
     description: Logging in and stuff
   - name: Letters
-
 
 components:
   headers:
@@ -23,7 +22,7 @@ components:
     SessionCookie:
       description: A succesful login response
       headers:
-        Set-Cookie: 
+        Set-Cookie:
           $ref: "#/components/headers/LoginCookie"
 
   schemas:
@@ -52,10 +51,10 @@ components:
     UserCredentials:
       description: Credentials for loging in and creating Account
       content:
-          application/json:
-            schema:
-             type: object
-             properties:
+        application/json:
+          schema:
+            type: object
+            properties:
               email:
                 type: string
                 format: email
@@ -63,7 +62,6 @@ components:
               password:
                 type: string
                 example: password123
-
 
   securitySchemes:
     sessionKeyCookie:
@@ -76,10 +74,10 @@ components:
       in: header
       name: "X-User-Email"
 
-
 paths:
   /api/letter/create:
     post:
+      operationId: createLetter
       security:
         - sessionKeyCookie: []
       tags:
@@ -141,7 +139,7 @@ paths:
                   type: string
                 tag_list:
                   type: object
-                  additionalProperties: 
+                  additionalProperties:
                     type: object
                     properties:
                       name:
@@ -171,12 +169,12 @@ paths:
           schema:
             type: string
       responses:
-        "200": 
-            description: "Array of Letters that contain the Tag"
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/ArrayOfLetters"
+        "200":
+          description: "Array of Letters that contain the Tag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArrayOfLetters"
         "500":
           description: "Something went wrong server side"
         "401":
@@ -195,7 +193,7 @@ paths:
           schema:
             type: string
       responses:
-        "200": 
+        "200":
           description: "Deleted Succesfully"
         "500":
           description: "Something went wrong server side"
@@ -217,8 +215,8 @@ paths:
           schema:
             type: string
       responses:
-        "200": 
-            description: "Letter Deleted Succ"
+        "200":
+          description: "Letter Deleted Succ"
         "500":
           description: "Something went wrong server side"
         "401":
@@ -232,19 +230,19 @@ paths:
         - SessionKeyCookie: []
         - emailHeader: []
       responses:
-        "200": 
-            description: "An Object that maps tag_id to another object containing tagColor and tagName"
-            content:
-              application/json:
-                schema:
+        "200":
+          description: "An Object that maps tag_id to another object containing tagColor and tagName"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
                   type: object
-                  additionalProperties: 
-                    type: object
-                    properties:
-                      name:
-                        type: string
-                      color:
-                        type: string
+                  properties:
+                    name:
+                      type: string
+                    color:
+                      type: string
         "500":
           description: "Something went wrong server side"
         "401":
@@ -265,14 +263,12 @@ paths:
           schema:
             type: string
       responses:
-        "200": 
-            description: "Tag Succesfully Deleted"
+        "200":
+          description: "Tag Succesfully Deleted"
         "500":
           description: "Something went wrong server side"
         "401":
           description: "wrong creds"
-
-        
 
   /user/login:
     post:
@@ -282,9 +278,9 @@ paths:
       summary: Allows user to login
       requestBody:
         $ref: "#/components/requestBodies/UserCredentials"
-        
+
       responses:
-        "200": 
+        "200":
           description: "Login Succes or Fail"
           $ref: "#/components/responses/SessionCookie"
         "413":
@@ -294,6 +290,7 @@ paths:
 
   /user/register:
     post:
+      operationId: registerUser
       tags:
         - Auth
       summary: Creates a new User Account
@@ -310,6 +307,7 @@ paths:
 
   /user/logout:
     put:
+      operationId: userLogout
       summary: Deletes session ID
       tags:
         - Auth
@@ -337,6 +335,7 @@ paths:
 
   /user/forgot-password:
     post:
+      operationId: requestPasswordReset
       tags:
         - Auth
       summary: Sends a reset password link to email
@@ -350,7 +349,7 @@ paths:
                   type: string
                   format: email
       responses:
-        "200": 
+        "200":
           description: Reset link will be sent if email exists.
         "500":
           description: Server error
@@ -359,6 +358,7 @@ paths:
 
   /user/reset-password:
     post:
+      operationId: resetPassword
       tags:
         - Auth
       summary: If JWT.valid(), reset password
@@ -375,16 +375,11 @@ paths:
                 uuid:
                   type: string
       responses:
-        "200": 
+        "200":
           description: Password Succesfully Reset
         "401":
           description: Invalid JWT, u sneaky boi
         "500":
           description: Server Error
-        "418": 
+        "418":
           description: Not supposed to happen
-
-      
-
-
-
