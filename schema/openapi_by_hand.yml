@@ -250,7 +250,7 @@ paths:
   /api/tags/{tag_id}:
     delete:
       tags:
-        - Letter
+        - Letters
       operationId: deleteTag
       summary: Deletes a tag, but no letters
       security:
