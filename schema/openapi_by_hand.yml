@@ -75,33 +75,6 @@ components:
       name: "X-User-Email"
 
 paths:
-  /api/letter/create:
-    post:
-      operationId: createLetter
-      security:
-        - sessionKeyCookie: []
-      tags:
-        - Letters
-      summary: User creates letter for themslves
-      requestBody:
-        description: The parts of a letter
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                letterBody:
-                  type: string
-                tags:
-                  type: array
-                  items:
-                    type: string
-      responses:
-        "200":
-          description: Letter Added
-        "418":
-          description: Issue Adding Letter
-
   /api/letters:
     get:
       tags:
