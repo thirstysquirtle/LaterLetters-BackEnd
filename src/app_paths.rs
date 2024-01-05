@@ -291,7 +291,7 @@ pub fn build(shared_state: Arc<SharedState>) -> Router {
     Router::new()
         .route("/letters", get(query_all_letters).post(save_letter))
         .route("/letters/:tag_id", get(query_letters_in_a_tag).delete(delete_tagged_letters))
-        .route("/letters/:letter_id", delete(delete_letter))
+        .route("/letter/:letter_id", delete(delete_letter))
         .route("/tags/:tag_id", delete(delete_tag))
         .route("/tags", get(query_user_tags))
         .route_layer(middleware::from_fn_with_state(

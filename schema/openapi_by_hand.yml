@@ -173,7 +173,7 @@ paths:
         "401":
           description: "wrong creds"
 
-  /api/letters/{letter_id}:
+  /api/letter/{letter_id}:
     delete:
       tags:
         - Letters
