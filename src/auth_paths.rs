@@ -8,7 +8,7 @@ use axum::{
     extract::State,
     http::{header, StatusCode},
     response::IntoResponse,
-    routing::{post, put},
+    routing::{post, put, get},
     Json, Router,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
@@ -19,7 +19,7 @@ use crate::{
     COOKIE_SESSION, DB_SESSIONS, DB_USER,
 };
 use chrono::{Days, Utc};
-use mongodb::bson::doc;
+use mongodb::bson::{doc, Uuid};
 use serde::{Deserialize, Serialize};
 use tokio::{
     join,
@@ -34,7 +34,7 @@ struct UserLoginCredentials {
 
 #[derive(Serialize, Deserialize)]
 struct UserDocument {
-    //the id is their Email
+    //the id is their Email/Username
     _id: String,
     pass_hash: String,
 }
@@ -92,14 +92,14 @@ async fn login_user(
                 }
                 Err(_) => {
                     return Ok((
-                        StatusCode::OK,
+                        StatusCode::UNAUTHORIZED,
                         [(header::SET_COOKIE, "".to_string())],
                     ))
                 }
             }
         } else {
             return Ok((
-                StatusCode::OK,
+                StatusCode::UNAUTHORIZED,
                 [(header::SET_COOKIE, "".to_string())],
             ));
         }
@@ -363,6 +363,26 @@ async fn reset_password(
     }
 }
 
+
+async fn create_anon_account(
+    State(state): State<Arc<SharedState>>
+) -> Result<impl IntoResponse, AppError> {
+    let username = uuid::Uuid::new_v4();
+    let pass = &username.to_string()[..8];
+    let salt = SaltString::generate(&mut OsRng);
+    let pass_hash = match argon2::Argon2::default().hash_password(pass.as_bytes(), &salt) {
+        Ok(hash) => hash,
+        Err(_) => return Err(AppError(anyhow!("anon fail")))
+    };
+    state.mongo_client.database(DB_USER).collection(COL_USER_CREDS).insert_one(UserDocument{
+        _id: uuid::Uuid::new_v4().to_string(),
+        pass_hash: pass_hash.to_string()
+    }, None).await?;
+
+
+    return Ok(Json(doc!{"username": username, "password": pass}))
+}
+
 pub fn build(shared_state: Arc<SharedState>) -> Router {
     Router::new()
         .route("/login", post(login_user))
@@ -370,5 +390,6 @@ pub fn build(shared_state: Arc<SharedState>) -> Router {
         .route("/logout", put(logout_user))
         .route("/forgot-password", post(send_email_reset))
         .route("/reset-password", post(reset_password))
+        .route("/anon-account", get(create_anon_account))
         .with_state(shared_state)
 }

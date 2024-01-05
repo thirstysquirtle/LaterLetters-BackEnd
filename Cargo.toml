@@ -13,13 +13,13 @@ futures = "0.3.28"
 
 chrono = { version = "0.4.31", features = ["serde"]}
 
-axum = "0.7.1"
+axum = {version = "0.7.1"}
 axum-extra = { version = "0.9.0", features = ["cookie"]}
 
 argon2 = "0.5.2"
 aws-config = { features = ["behavior-version-latest"], version = "1.1.1"}
 aws-sdk-sesv2 = "1.7.0"
-
+tower-http = {version = "0.5.0", features = ["cors"]}
 
 [dependencies.mongodb]
 version = "2.8.0"

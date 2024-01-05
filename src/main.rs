@@ -2,7 +2,7 @@ use aws_config::{meta::region::RegionProviderChain, Region};
 use axum::{
     http::{header, StatusCode},
     response::{IntoResponse, Response},
-    Router,
+    Router, routing::get,
 };
 use axum_extra::extract::cookie::Cookie;
 use chrono::{DateTime, Utc};
@@ -12,6 +12,7 @@ use mongodb::{
     Client, IndexModel,
 };
 use serde::{Deserialize, Serialize};
+use tower_http::cors::{CorsLayer, Any};
 use std::{net::SocketAddr, sync::Arc};
 
 use crate::{
@@ -40,7 +41,7 @@ struct AppError(anyhow::Error);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        println!("{}", self.0);
+        println!("AppErr {}", self.0);
         let cook = Cookie::build((COOKIE_SESSION, "".to_string()))
             .domain("localhost")
             .path("/")
@@ -86,8 +87,14 @@ async fn main() {
         mongo_client,
         ses_client,
     });
-
-    let app = Router::new().nest("/user", auth_paths::build(shared_state.clone()).nest("/api", app_paths::build(shared_state)));
+    // async fn hando() -> impl IntoResponse {
+    //     return "test"
+    // }
+    let app = Router::new()
+        .nest("/user", auth_paths::build(shared_state.clone()))
+        .nest("/api", app_paths::build(shared_state));
+        // .route("/foo/bar", get(hando))
+        // .layer(CorsLayer::new().allow_methods(Any).allow_origin(Any));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("listening on {}", addr);
