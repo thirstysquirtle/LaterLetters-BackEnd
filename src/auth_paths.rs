@@ -1,3 +1,4 @@
+// This code sucks in terms of DRY and maintainabality, but I'm too uninterested to refactor it for now. 5 Jan 2023
 use anyhow::anyhow;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
@@ -6,17 +7,17 @@ use argon2::{
 use aws_sdk_sesv2::types::{Body, Content, Destination, EmailContent, Message};
 use axum::{
     extract::State,
-    http::{header, StatusCode},
+    http::{header, HeaderName, StatusCode},
     response::IntoResponse,
     routing::{get, post, put},
     Json, Router,
 };
-use axum_extra::extract::cookie::{Cookie, CookieJar};
+use axum_extra::extract::cookie::{self, Cookie, CookieJar};
 use std::{error::Error, ops::Add, sync::Arc};
 
 use crate::{
     AppError, SessionDocument, SharedState, COL_PASSWORD_RESET, COL_USER_CREDS, COL_USER_SESS,
-    COOKIE_SESSION, DB_SESSIONS, DB_USER,
+    COOKIE_SESSION, DB_SESSIONS, DB_USER, constants::COOKIE_EMAIL,
 };
 use chrono::{Date, DateTime, Days, Utc};
 use mongodb::bson::{doc, Uuid};
@@ -32,6 +33,18 @@ struct UserLoginCredentials {
     password: Option<String>,
 }
 
+fn setCookieHeaders(sess_id: &str, username: &str) -> [(HeaderName, String); 2] {
+    let sess_cook = cookie::Cookie::build((COOKIE_SESSION, sess_id))
+        .http_only(true)
+        .path("/");
+    let username_cook = cookie::Cookie::build((COOKIE_EMAIL, username))
+        .path("/");
+    return [
+        (header::SET_COOKIE, sess_cook.to_string()),
+        (header::SET_COOKIE, username_cook.to_string()),
+    ];
+}
+
 #[derive(Serialize, Deserialize)]
 struct UserDocument {
     //the id is their Email/Username
@@ -44,10 +57,7 @@ async fn login_user(
     Json(user_creds): Json<UserLoginCredentials>,
 ) -> Result<impl IntoResponse, AppError> {
     if user_creds.email.len() > 256 {
-        return Ok((
-            StatusCode::PAYLOAD_TOO_LARGE,
-            [(header::SET_COOKIE, "".to_string())],
-        ));
+        return Ok((StatusCode::PAYLOAD_TOO_LARGE, setCookieHeaders("", "")));
     }
 
     let anti_timing_attacks = sleep(Duration::from_millis(550));
@@ -76,32 +86,27 @@ async fn login_user(
                         .database(DB_SESSIONS)
                         .collection(COL_USER_SESS)
                         .insert_one(
-                            SessionDocument {
-                                _id: sess_id,
-                                user_email: user_creds.email,
-                                expiry_date: Utc::now().add(Days::new(30)),
+                            doc! {
+                                "_id": sess_id,
+                                "user_email": &user_creds.email,
+                                "expiry_date": Utc::now().add(Days::new(30)),
                             },
                             None,
                         )
                         .await?;
 
-                    let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
-                        .path("/")
-                        .http_only(true);
-                    return Ok((StatusCode::OK, [(header::SET_COOKIE, cook.to_string())]));
-                }
-                Err(_) => {
+                    // let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
+                    // .path("/")
+                    // .http_only(true);
                     return Ok((
-                        StatusCode::UNAUTHORIZED,
-                        [(header::SET_COOKIE, "".to_string())],
-                    ))
+                        StatusCode::OK,
+                        setCookieHeaders(&sess_id.to_string(), &user_creds.email),
+                    ));
                 }
+                Err(_) => return Ok((StatusCode::UNAUTHORIZED, setCookieHeaders("", ""))),
             }
         } else {
-            return Ok((
-                StatusCode::UNAUTHORIZED,
-                [(header::SET_COOKIE, "".to_string())],
-            ));
+            return Ok((StatusCode::UNAUTHORIZED, setCookieHeaders("", "")));
         }
     };
     join!(handler, anti_timing_attacks).0
@@ -112,10 +117,7 @@ async fn register_user(
     Json(user_creds): Json<UserLoginCredentials>,
 ) -> Result<impl IntoResponse, AppError> {
     if user_creds.email.len() > 256 {
-        return Ok((
-            StatusCode::PAYLOAD_TOO_LARGE,
-            [(header::SET_COOKIE, "".to_string())],
-        ));
+        return Ok((StatusCode::PAYLOAD_TOO_LARGE, setCookieHeaders("", "")));
     }
     let client = &state.mongo_client;
     let user_acc = client
@@ -154,18 +156,21 @@ async fn register_user(
             .database(DB_SESSIONS)
             .collection(COL_USER_SESS)
             .insert_one(
-                SessionDocument {
-                    _id: sess_id,
-                    expiry_date: sess_expiry,
-                    user_email: user_creds.email,
+                doc! {
+                    "_id": sess_id,
+                    "expiry_date": sess_expiry,
+                    "user_email": &user_creds.email,
                 },
                 None,
             )
             .await?;
-        let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
-            .path("/")
-            .http_only(true);
-        Ok((StatusCode::OK, [(header::SET_COOKIE, cook.to_string())]))
+        // let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
+        // .path("/")
+        // .http_only(true);
+        Ok((
+            StatusCode::OK,
+            setCookieHeaders(&sess_id.to_string(), &user_creds.email),
+        ))
     } else {
         Err(AppError(anyhow::anyhow!("wut")))
     }
@@ -176,19 +181,14 @@ async fn logout_user(
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
     let client = &state.mongo_client;
-    let cook = Cookie::build((COOKIE_SESSION, "".to_string()))
-        .path("/")
-        .http_only(true);
+    // let cook = Cookie::build((COOKIE_SESSION, "".to_string()))
+    // .path("/")
+    // .http_only(true);
 
     if let Some(sess_id) = jar.get(COOKIE_SESSION) {
         let uuid = match uuid::Uuid::parse_str(sess_id.value()) {
             Ok(res) => res,
-            Err(_) => {
-                return Ok((
-                    StatusCode::IM_A_TEAPOT,
-                    [(header::SET_COOKIE, "".to_string())],
-                ))
-            }
+            Err(_) => return Ok((StatusCode::IM_A_TEAPOT, setCookieHeaders("", ""))),
         };
 
         let res = client
@@ -197,13 +197,10 @@ async fn logout_user(
             .delete_one(doc! {"_id": uuid}, None)
             .await?;
         if res.deleted_count == 1 {
-            return Ok((StatusCode::OK, [(header::SET_COOKIE, cook.to_string())]));
+            return Ok((StatusCode::OK, setCookieHeaders("", "")));
         }
     }
-    Ok((
-        StatusCode::IM_A_TEAPOT,
-        [(header::SET_COOKIE, cook.to_string())],
-    ))
+    Ok((StatusCode::IM_A_TEAPOT, setCookieHeaders("", "")))
 }
 
 async fn send_email_reset(
@@ -399,12 +396,12 @@ async fn create_anon_account(
         )
         .await?;
 
-    let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
-        .path("/")
-        .http_only(true);
+    // let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
+    // .path("/")
+    // .http_only(true);
 
     return Ok((
-        [(header::SET_COOKIE, cook.to_string())],
+        setCookieHeaders(&sess_id.to_string(), &username),
         (Json(doc! {"username": username, "password": pass})),
     ));
 }
