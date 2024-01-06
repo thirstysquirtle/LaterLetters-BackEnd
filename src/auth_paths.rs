@@ -8,7 +8,7 @@ use axum::{
     extract::State,
     http::{header, StatusCode},
     response::IntoResponse,
-    routing::{post, put, get},
+    routing::{get, post, put},
     Json, Router,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
@@ -18,7 +18,7 @@ use crate::{
     AppError, SessionDocument, SharedState, COL_PASSWORD_RESET, COL_USER_CREDS, COL_USER_SESS,
     COOKIE_SESSION, DB_SESSIONS, DB_USER,
 };
-use chrono::{Days, Utc};
+use chrono::{Date, DateTime, Days, Utc};
 use mongodb::bson::{doc, Uuid};
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -49,6 +49,7 @@ async fn login_user(
             [(header::SET_COOKIE, "".to_string())],
         ));
     }
+
     let anti_timing_attacks = sleep(Duration::from_millis(550));
     let handler = async {
         let client = &state.mongo_client;
@@ -85,7 +86,6 @@ async fn login_user(
                         .await?;
 
                     let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
-                        .domain("localhost")
                         .path("/")
                         .http_only(true);
                     return Ok((StatusCode::OK, [(header::SET_COOKIE, cook.to_string())]));
@@ -163,7 +163,6 @@ async fn register_user(
             )
             .await?;
         let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
-            .domain("localhost")
             .path("/")
             .http_only(true);
         Ok((StatusCode::OK, [(header::SET_COOKIE, cook.to_string())]))
@@ -178,7 +177,6 @@ async fn logout_user(
 ) -> Result<impl IntoResponse, AppError> {
     let client = &state.mongo_client;
     let cook = Cookie::build((COOKIE_SESSION, "".to_string()))
-        .domain("localhost")
         .path("/")
         .http_only(true);
 
@@ -363,24 +361,52 @@ async fn reset_password(
     }
 }
 
-
 async fn create_anon_account(
-    State(state): State<Arc<SharedState>>
+    State(state): State<Arc<SharedState>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let username = uuid::Uuid::new_v4();
+    let username = uuid::Uuid::new_v4().to_string();
     let pass = &username.to_string()[..8];
     let salt = SaltString::generate(&mut OsRng);
     let pass_hash = match argon2::Argon2::default().hash_password(pass.as_bytes(), &salt) {
         Ok(hash) => hash,
-        Err(_) => return Err(AppError(anyhow!("anon fail")))
+        Err(_) => return Err(AppError(anyhow!("anon fail"))),
     };
-    state.mongo_client.database(DB_USER).collection(COL_USER_CREDS).insert_one(UserDocument{
-        _id: uuid::Uuid::new_v4().to_string(),
-        pass_hash: pass_hash.to_string()
-    }, None).await?;
 
+    state
+        .mongo_client
+        .database(DB_USER)
+        .collection(COL_USER_CREDS)
+        .insert_one(
+            doc! {
+                "_id": &username,
+                "pass_hash": pass_hash.to_string(),
+            },
+            None,
+        )
+        .await?;
+    let sess_id = uuid::Uuid::new_v4();
+    state
+        .mongo_client
+        .database(DB_SESSIONS)
+        .collection(COL_USER_SESS)
+        .insert_one(
+            doc! {
+                "_id": mongodb::bson::Uuid::from(sess_id),
+                "user_email": &username,
+                "expiry_date": Utc::now().add(chrono::Duration::days(30)),
+            },
+            None,
+        )
+        .await?;
 
-    return Ok(Json(doc!{"username": username, "password": pass}))
+    let cook = Cookie::build((COOKIE_SESSION, sess_id.to_string()))
+        .path("/")
+        .http_only(true);
+
+    return Ok((
+        [(header::SET_COOKIE, cook.to_string())],
+        (Json(doc! {"username": username, "password": pass})),
+    ));
 }
 
 pub fn build(shared_state: Arc<SharedState>) -> Router {

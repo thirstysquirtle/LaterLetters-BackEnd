@@ -356,3 +356,13 @@ paths:
           description: Server Error
         "418":
           description: Not supposed to happen
+  /user/anon-account:
+    get:
+      operationId: createAnonAccount
+      tags:
+        - Auth
+      responses:
+        "200":
+          description: "Anonymous account + Cookies Sent"
+        "500":
+          description: "Error Creating Temp Account"
