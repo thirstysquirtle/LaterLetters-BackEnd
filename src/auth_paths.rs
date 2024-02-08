@@ -7,7 +7,7 @@ use argon2::{
 use aws_sdk_sesv2::types::{Body, Content, Destination, EmailContent, Message};
 use axum::{
     extract::State,
-    http::{header, HeaderName, StatusCode},
+    http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::IntoResponse,
     routing::{get, post, put},
     Json, Router,
@@ -33,16 +33,17 @@ struct UserLoginCredentials {
     password: Option<String>,
 }
 
-fn setCookieHeaders(sess_id: &str, username: &str) -> [(HeaderName, String); 2] {
+pub fn setCookieHeaders(sess_id: &str, username: &str) -> HeaderMap {
     let sess_cook = cookie::Cookie::build((COOKIE_SESSION, sess_id))
         .http_only(true)
         .path("/");
     let username_cook = cookie::Cookie::build((COOKIE_EMAIL, username))
         .path("/");
-    return [
-        (header::SET_COOKIE, sess_cook.to_string()),
-        (header::SET_COOKIE, username_cook.to_string()),
-    ];
+    let mut header = HeaderMap::new();
+    header.append(header::SET_COOKIE, HeaderValue::from_str( &sess_cook.to_string()).unwrap());
+    header.append(header::SET_COOKIE,  HeaderValue::from_str( &username_cook.to_string()).unwrap());
+
+    return header;
 }
 
 #[derive(Serialize, Deserialize)]
@@ -381,14 +382,14 @@ async fn create_anon_account(
             None,
         )
         .await?;
-    let sess_id = uuid::Uuid::new_v4();
+    let sess_id = mongodb::bson::Uuid::new();
     state
         .mongo_client
         .database(DB_SESSIONS)
         .collection(COL_USER_SESS)
         .insert_one(
             doc! {
-                "_id": mongodb::bson::Uuid::from(sess_id),
+                "_id": sess_id,
                 "user_email": &username,
                 "expiry_date": Utc::now().add(chrono::Duration::days(30)),
             },

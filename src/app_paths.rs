@@ -9,7 +9,7 @@ use axum::{
     http::{header, HeaderMap, Method, StatusCode},
     middleware,
     response::IntoResponse,
-    routing::{post, get, delete},
+    routing::{delete, get, post},
     Router,
 };
 use axum_extra::extract::CookieJar;
@@ -23,6 +23,8 @@ use mongodb::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{hash_set, HashMap},
+    fmt::format,
+    hash::Hash,
     sync::Arc,
 };
 
@@ -54,7 +56,11 @@ async fn save_letter(
     headers: HeaderMap,
     Json(payload): Json<LetterPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let email = headers.get(EMAIL_HEADER).expect("This should have been handle by middleware").to_str().expect("bru");
+    let email = headers
+        .get(EMAIL_HEADER)
+        .expect("This should have been handle by middleware")
+        .to_str()
+        .expect("bru");
     let client = &state.mongo_client;
     if payload.body.len() > 10000 {
         return Ok(StatusCode::PAYLOAD_TOO_LARGE);
@@ -83,21 +89,34 @@ async fn save_letter(
     let mut set_doc = Document::new();
     let mut inc_doc = Document::new();
     for (id, tag) in payload.tag_list.into_iter() {
-        set_doc.insert(&id, doc! {"name": &tag.name, "color": tag.color});
-        inc_doc.insert(format!("{}.count", tag.name), 1);
+        set_doc.insert(format!("{}.color", &id), &tag.color);
+        set_doc.insert(format!("{}.name", &id), &tag.name);
+        inc_doc.insert(format!("{}.count", id), 1);
     }
     inc_doc.insert("total_count", 1);
-    let update_doc = doc! {
-        "$set": set_doc,
-        "$inc": inc_doc
-    };
+    // let update_doc = doc! {
+    //     "$inc": inc_doc,
+    //     "$set": set_doc,
+    // };
 
     client
         .database(DB_USER)
         .collection::<DontCare>(COL_USER_TAGS)
         .update_one(
             doc! {"_id": email},
-            update_doc,
+            doc! {"$set": set_doc},
+            UpdateOptions::builder().upsert(true).build(),
+        )
+        .await?;
+
+    client
+        .database(DB_USER)
+        .collection::<DontCare>(COL_USER_TAGS)
+        .update_one(
+            doc! {"_id": email},
+            doc! {
+                "$inc": inc_doc
+            },
             UpdateOptions::builder().upsert(true).build(),
         )
         .await?;
@@ -114,16 +133,24 @@ struct TagResponse {
     color: String,
     count: u32,
 }
+
+#[derive(Deserialize, Serialize)]
+enum Wtf {
+    String,
+    TagResponse,
+    Int,
+}
+
 // Get /tags
 async fn query_user_tags(
     State(state): State<Arc<SharedState>>,
     headers: HeaderMap,
-) -> Result<Json<HashMap<String, TagResponse>>, AppError> {
+) -> Result<Json<HashMap<String, Wtf>>, AppError> {
     if let Some(email) = headers.get(EMAIL_HEADER) {
         let res = state
             .mongo_client
             .database(DB_USER)
-            .collection::<HashMap<String, TagResponse>>(COL_USER_TAGS)
+            .collection::<HashMap<String, Wtf>>(COL_USER_TAGS)
             .find_one(doc! {"_id": email.to_str().expect("getting bored")}, None)
             .await?;
         match res {
@@ -290,7 +317,10 @@ async fn delete_tagged_letters(
 pub fn build(shared_state: Arc<SharedState>) -> Router {
     Router::new()
         .route("/letters", get(query_all_letters).post(save_letter))
-        .route("/letters/:tag_id", get(query_letters_in_a_tag).delete(delete_tagged_letters))
+        .route(
+            "/letters/:tag_id",
+            get(query_letters_in_a_tag).delete(delete_tagged_letters),
+        )
         .route("/letter/:letter_id", delete(delete_letter))
         .route("/tags/:tag_id", delete(delete_tag))
         .route("/tags", get(query_user_tags))

@@ -48,8 +48,6 @@ impl IntoResponse for AppError {
             .http_only(true);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            [(header::SET_COOKIE, cook.to_string())],
-            "Bruuhhh",
         )
             .into_response()
     }
@@ -123,7 +121,7 @@ async fn start_mongo() -> mongodb::error::Result<Client> {
                 .keys(doc! {"expiry_date": 1})
                 .options(
                     IndexOptions::builder()
-                        .expire_after(std::time::Duration::from_secs(5))
+                        .expire_after(std::time::Duration::from_secs(500))
                         .build(),
                 )
                 .build(),
@@ -138,7 +136,7 @@ async fn start_mongo() -> mongodb::error::Result<Client> {
                 .keys(doc! {"expiry_date": 1})
                 .options(
                     IndexOptions::builder()
-                        .expire_after(std::time::Duration::from_secs(5))
+                        .expire_after(std::time::Duration::from_secs(500))
                         .build(),
                 )
                 .build(),
