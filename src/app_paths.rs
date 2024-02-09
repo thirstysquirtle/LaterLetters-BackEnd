@@ -16,7 +16,7 @@ use axum_extra::extract::CookieJar;
 use core::result::Result::Ok;
 use futures::stream::{StreamExt, TryStream, TryStreamExt};
 use mongodb::{
-    bson::{bson, doc, Bson, Document},
+    bson::{bson, doc, Bson, Document, Uuid},
     options::UpdateOptions,
     Client, IndexModel,
 };
@@ -133,29 +133,32 @@ struct TagResponse {
     color: String,
     count: u32,
 }
-
 #[derive(Deserialize, Serialize)]
-enum Wtf {
-    String,
-    TagResponse,
-    Int,
+struct TagsDoc {
+    //Email or random ID
+    _id: String,
+    total_count: u32,
+
+    #[serde(flatten)]
+    unknown_fields: HashMap<String, TagResponse>,
 }
 
 // Get /tags
 async fn query_user_tags(
     State(state): State<Arc<SharedState>>,
     headers: HeaderMap,
-) -> Result<Json<HashMap<String, Wtf>>, AppError> {
+) -> Result<Json<TagsDoc>, AppError> {
     if let Some(email) = headers.get(EMAIL_HEADER) {
+        let bru = email.to_str().expect("bru");
         let res = state
             .mongo_client
             .database(DB_USER)
-            .collection::<HashMap<String, Wtf>>(COL_USER_TAGS)
-            .find_one(doc! {"_id": email.to_str().expect("getting bored")}, None)
+            .collection::<TagsDoc>(COL_USER_TAGS)
+            .find_one(doc! {"_id": bru}, None)
             .await?;
         match res {
             Some(obj) => return Ok(Json(obj)),
-            None => return Ok(Json(HashMap::new())),
+            None => return Err(AppError(anyhow!("No Doc"))),
         }
     }
     // return Ok(Json(res))
