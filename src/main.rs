@@ -12,7 +12,7 @@ use mongodb::{
     Client, IndexModel,
 };
 use serde::{Deserialize, Serialize};
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::{cors::{Any, CorsLayer}, services::ServeDir};
 use std::{net::SocketAddr, sync::Arc};
 
 use crate::{
@@ -90,8 +90,8 @@ async fn main() {
     // }
     let app = Router::new()
         .nest("/user", auth_paths::build(shared_state.clone()))
-        .nest("/api", app_paths::build(shared_state));
-        // .route("/foo/bar", get(hando))
+        .nest("/api", app_paths::build(shared_state))
+        .nest_service("/", ServeDir::new("static_website").append_index_html_on_directories(true));
         // .layer(CorsLayer::new().allow_methods(Any).allow_origin(Any));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
