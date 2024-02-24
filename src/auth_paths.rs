@@ -7,20 +7,20 @@ use argon2::{
 use aws_sdk_sesv2::types::{Body, Content, Destination, EmailContent, Message};
 use axum::{
     extract::State,
-    http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::IntoResponse,
     routing::{get, post, put},
     Json, Router,
 };
-use axum_extra::extract::cookie::{self, Cookie, CookieJar};
+use axum_extra::extract::cookie::{self, CookieJar};
 use std::{error::Error, ops::Add, sync::Arc};
 
 use crate::{
     AppError, SessionDocument, SharedState, COL_PASSWORD_RESET, COL_USER_CREDS, COL_USER_SESS,
     COOKIE_SESSION, DB_SESSIONS, DB_USER, constants::COOKIE_EMAIL,
 };
-use chrono::{Date, DateTime, Days, Utc};
-use mongodb::bson::{doc, Uuid};
+use chrono::{Days, Utc};
+use mongodb::bson::{doc};
 use serde::{Deserialize, Serialize};
 
 use tokio::{

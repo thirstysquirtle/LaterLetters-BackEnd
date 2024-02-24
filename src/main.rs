@@ -1,8 +1,8 @@
 use aws_config::{meta::region::RegionProviderChain, Region};
 use axum::{
-    http::{header, StatusCode},
+    http::{StatusCode},
     response::{IntoResponse, Response},
-    Router, routing::get,
+    Router,
 };
 use axum_extra::extract::cookie::Cookie;
 use chrono::{DateTime, Utc};
@@ -12,13 +12,10 @@ use mongodb::{
     Client, IndexModel,
 };
 use serde::{Deserialize, Serialize};
-use tower_http::{cors::{Any, CorsLayer}, services::ServeDir};
+use tower_http::{services::ServeDir};
 use std::{net::SocketAddr, sync::Arc};
 
-use crate::{
-    app_paths::LetterDocument,
-    constants::{COL_USER_TAGS, DB_USER_LETTERS},
-};
+
 
 ///Every Document in this DB has the user's Email as the key.
 static DB_USER: &str = "user_auth";
@@ -42,7 +39,7 @@ struct AppError(anyhow::Error);
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         println!("AppErr {}", self.0);
-        let cook = Cookie::build((COOKIE_SESSION, "".to_string()))
+        let _cook = Cookie::build((COOKIE_SESSION, "".to_string()))
             .domain("localhost")
             .path("/")
             .http_only(true);
@@ -101,7 +98,7 @@ async fn main() {
 }
 
 async fn start_mongo() -> mongodb::error::Result<Client> {
-    let uri = "mongodb://localhost:9999/?directConnection=true&tls=false&maxPoolSize=10";
+    let uri = "mongodb://localhost:27017/?directConnection=true&tls=false&maxPoolSize=10";
     let mut client_options = ClientOptions::parse(uri).await?;
 
     let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();

@@ -1,22 +1,20 @@
 use std::sync::Arc;
 
 use crate::{
-    constants::EMAIL_HEADER, AppError, SessionDocument, SharedState, COL_USER_SESS, COOKIE_SESSION,
+    constants::EMAIL_HEADER, SharedState, COL_USER_SESS, COOKIE_SESSION,
     DB_SESSIONS,
 };
-use anyhow::anyhow;
+
 use axum::{
-    extract::{FromRequest, Request, State},
-    http::{header, HeaderMap, StatusCode},
+    extract::{Request, State},
+    http::{HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
-    routing::head,
-    Json,
 };
 
-use axum_extra::extract::{self, CookieJar};
-use chrono::Utc;
-use mongodb::{bson::doc, change_stream::session, Client, Collection};
+use axum_extra::extract::{CookieJar};
+
+use mongodb::{bson::doc, Collection};
 use serde::{Deserialize, Serialize};
 
 use core::result::Result::Ok;

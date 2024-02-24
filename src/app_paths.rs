@@ -1,30 +1,26 @@
 use crate::{
     constants::{COL_USER_TAGS, DB_USER_LETTERS, EMAIL_HEADER},
-    my_middleware, AppError, SessionDocument, SharedState, COL_USER_SESS, COOKIE_SESSION,
-    DB_SESSIONS, DB_USER,
+    my_middleware, AppError, SharedState, DB_USER,
 };
 use anyhow::anyhow;
 use axum::{
-    extract::{Json, Path, Request, State},
-    http::{header, HeaderMap, Method, StatusCode},
+    extract::{Json, Path, State},
+    http::{HeaderMap, StatusCode},
     middleware,
     response::IntoResponse,
-    routing::{delete, get, post},
+    routing::{delete, get},
     Router,
 };
-use axum_extra::extract::CookieJar;
+
 use core::result::Result::Ok;
-use futures::stream::{StreamExt, TryStream, TryStreamExt};
+use futures::stream::{StreamExt, TryStreamExt};
 use mongodb::{
-    bson::{bson, doc, Bson, Document, Uuid},
-    options::UpdateOptions,
-    Client, IndexModel,
+    bson::{doc, Document},
+    options::UpdateOptions, IndexModel,
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{hash_set, HashMap},
-    fmt::format,
-    hash::Hash,
+    collections::{HashMap},
     sync::Arc,
 };
 
