@@ -91,7 +91,7 @@ async fn main() {
         .nest_service("/", ServeDir::new("static_website").append_index_html_on_directories(true));
         // .layer(CorsLayer::new().allow_methods(Any).allow_origin(Any));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     println!("listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
